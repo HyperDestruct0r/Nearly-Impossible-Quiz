@@ -1380,13 +1380,13 @@ def unlock_positive_advancement(count):
     name, reward = ADVANCEMENTS_POSITIVE[count]
     advancements_unlocked.add(name)
     coins += reward
-    print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}! (+{reward} coins)", total_questions_correct))
+    print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}!", total_questions_correct))
 
 def unlock_negative_advancement(count):
     global coins, lives, time_debuff_queue
     name = ADVANCEMENTS_NEGATIVE[count]
     advancements_unlocked.add(name)
-    print(glitch_text(f"☠️ NEGATIVE ADVANCEMENT: {name}", total_questions_correct))
+    print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}", total_questions_correct))
     if count == 1: coins = max(0, coins - 1)
     elif count == 2: time_debuff_queue.append(SHORT_TIME_LIMIT)
     elif count == 3:
@@ -1540,5 +1540,3 @@ while counter < TOTAL_QUESTIONS:
 
         if counter >= TOTAL_QUESTIONS:
             break
-
-
