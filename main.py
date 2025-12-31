@@ -1205,10 +1205,9 @@ import sys
 # Globals
 # ==========================
 coins = 0  # earned by correct answers
-
 advancements_unlocked = set()
 total_questions_wrong = 0
-
+total_questions_correct = 0
 
 shop_inventory = {
     "second_chance": 0,   # prevents next life loss
@@ -1237,6 +1236,25 @@ SHOP_PRICES = {
     "bargain_life": 8
 }
 
+SHOP_NAMES = {
+    "second chance": "second_chance",
+    "skip voucher": "skip_voucher",
+    "freeze chip": "freeze_chip",
+    "time cushion": "time_cushion",
+    "time addition": "time_addition",
+    "bargain life": "bargain_life"
+}
+
+SHOP_DESCRIPTIONS = {
+    "second_chance": "🛡️ Prevents losing a life on the next wrong answer (limit 2).",
+    "skip_voucher": "⏭️ Skips a question automatically (limit 1).",
+    "freeze_chip": "🧊 Freezes the timer for one question (limit 2).",
+    "time_cushion": "⏱ Cancels one layer of time debuff (limit 3).",
+    "time_addition": "➕ Adds 5–10 seconds to next question (limit 1).",
+    "bargain_life": "❤️ Instantly gain 1 life (limit 1)."
+}
+
+# Advancements still in progress!
 ADVANCEMENTS_POSITIVE = {
     5:  ("Getting Warm", 1),
     10: ("In the Zone", 5),
@@ -1257,7 +1275,6 @@ ADVANCEMENTS_NEGATIVE = {
     15: "Collapse",
 }
 
-
 shop_cooldown = 0  # prevents shop spam
 
 powerups = {"hint": 1, "skip": 1, "freeze": 1}
@@ -1265,7 +1282,6 @@ lives = 3
 score = 0
 questions_since_last_tax = 0
 questions_since_last_shop = 0
-total_questions_correct = 0  # track all correct questions for secret end
 
 current_level = 1
 questions_correct_in_level = 0
@@ -1278,7 +1294,7 @@ time_debuff_queue = []
 time_up = False
 
 # Initial question time limit
-next_question_time_limit = BASE_TIME_LIMIT  # ✅ Initialize this
+next_question_time_limit = BASE_TIME_LIMIT
 
 # ==========================
 # Level-up system
@@ -1290,66 +1306,31 @@ level_up_table = {
     26: 60, 27: 64, 28: 10000
 }
 
-SHOP_NAMES = {
-    "second chance": "second_chance",
-    "skip voucher": "skip_voucher",
-    "freeze chip": "freeze_chip",
-    "time cushion": "time_cushion",
-    "time addition": "time_addition",
-    "bargain life": "bargain_life"
-}
-
-SHOP_DESCRIPTIONS = {
-    "second_chance": "🛡️ Prevents losing a life on the next wrong answer (limit 2).",
-    "skip_voucher": "⏭️ Skips a question automatically (limit 1).",
-    "freeze_chip": "🧊 Freezes the timer for one question (limit 2).",
-    "time_cushion": "⏱ Cancels one layer of time debuff (limit 3).",
-    "time_addition": "➕ Adds 5–10 seconds to next question (limit 1).",
-    "bargain_life": "❤️ Instantly gain 1 life (limit 1)."
-}
-
+# ==========================
+# Fanum Tax
+# ==========================
 def apply_fanum_tax():
     global powerups
-
-    # Collect removable power-ups (excluding hints)
-    removable = []
-    if powerups["skip"] > 0:
-        removable.append("skip")
-    if powerups["freeze"] > 0:
-        removable.append("freeze")
-
+    removable = [k for k in powerups if k != "hint" and powerups[k] > 0]
     if not removable:
-        return  # nothing to tax
-
-    # Remove 1–2 power-ups total
+        return
     tax_amount = random.randint(1, 2)
-
     print("🧾 FANUM TAX INITIATED!")
-
     for _ in range(tax_amount):
         if not removable:
             break
         choice = random.choice(removable)
         powerups[choice] -= 1
         print(f"💸 {choice.capitalize()} confiscated!")
-
         if powerups[choice] <= 0:
             removable.remove(choice)
-
 
 # ==========================
 # Glitch effect
 # ==========================
 def glitch_text(text, total_correct):
-    """Randomly replace letters with '?' near 6000 questions."""
     if 5995 <= total_correct <= 6000:
-        glitched = ""
-        for c in text:
-            if c.isalpha() and random.random() < 0.2:  # 20% chance
-                glitched += "?"
-            else:
-                glitched += c
-        return glitched
+        return "".join(c if not c.isalpha() or random.random() > 0.2 else "?" for c in text)
     return text
 
 # ==========================
@@ -1357,100 +1338,67 @@ def glitch_text(text, total_correct):
 # ==========================
 def open_shop():
     global coins, lives, shop_inventory
-
     print("\n🛒 ===== IMPOSSIBLE SHOP ===== 🛒")
     print(f"💰 Coins: {coins}\n")
-
     for item_key in SHOP_PRICES:
         owned = shop_inventory[item_key]
         limit = SHOP_LIMITS[item_key]
         status = "MAX" if owned >= limit else f"{SHOP_PRICES[item_key]} coins"
         print(f"{item_key.replace('_',' ').title():15} [{owned}/{limit}] → {status}")
-        print(f"    {SHOP_DESCRIPTIONS[item_key]}")  # display description
-
+        print(f"    {SHOP_DESCRIPTIONS[item_key]}")
     print("\nType item name to buy, or 'exit' to continue")
-
     while True:
         choice = input("> ").strip().lower()
         if choice == "exit":
             print("🛍️ Leaving shop...\n")
             return
-
         if choice not in SHOP_NAMES:
             print("❌ Invalid item")
             continue
-
         key = SHOP_NAMES[choice]
-
         if shop_inventory[key] >= SHOP_LIMITS[key]:
             print("🚫 Purchase limit reached")
             continue
-
         price = SHOP_PRICES[key]
         if coins < price:
             print("💸 Not enough coins")
             continue
-
-        # Purchase
         coins -= price
         shop_inventory[key] += 1
         print(f"✅ Purchased {choice.title()}!")
         print(f"    {SHOP_DESCRIPTIONS[key]}")
-
         if key == "bargain_life":
             lives += 1
             print("❤️ Life gained immediately!")
-
         print(f"💰 Coins left: {coins}")
-        
+
+# ==========================
+# Advancements
+# ==========================
 def unlock_positive_advancement(count):
     global coins
     name, reward = ADVANCEMENTS_POSITIVE[count]
     advancements_unlocked.add(name)
     coins += reward
-    print(glitch_text(
-        f"ADVANCEMENT UNLOCKED: {name}!",
-        total_questions_correct
-    ))
+    print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}! (+{reward} coins)", total_questions_correct))
 
 def unlock_negative_advancement(count):
     global coins, lives, time_debuff_queue
-
     name = ADVANCEMENTS_NEGATIVE[count]
     advancements_unlocked.add(name)
-
-    print(glitch_text(
-        f"ADVANCEMENT UNLOCKED: {name}!",
-        total_questions_correct
-    ))
-
-    if count == 1:
-        coins = max(0, coins - 1)
-
-    elif count == 2:
-        time_debuff_queue.append(SHORT_TIME_LIMIT)
-
+    print(glitch_text(f"☠️ NEGATIVE ADVANCEMENT: {name}", total_questions_correct))
+    if count == 1: coins = max(0, coins - 1)
+    elif count == 2: time_debuff_queue.append(SHORT_TIME_LIMIT)
     elif count == 3:
         removable = [k for k in powerups if powerups[k] > 0]
         if removable:
             lost = random.choice(removable)
             powerups[lost] -= 1
             print(f"💥 Lost power-up: {lost}")
-
-    elif count == 5:
-        time_debuff_queue.append(max(BASE_TIME_LIMIT - 5, 3))
-
-    elif count == 7:
-        lives -= 1
-        print("💔 Lost 1 life")
-
-    elif count == 11:
-        time_debuff_queue.extend([SHORT_TIME_LIMIT, SHORT_TIME_LIMIT])
-
-    elif count == 15:
-        print("🧾 FANUM TAX (FORCED)")
-        apply_fanum_tax()
-
+    elif count == 5: time_debuff_queue.append(max(BASE_TIME_LIMIT-5,3))
+    elif count == 7: lives -= 1; print("💔 Lost 1 life")
+    elif count == 11: time_debuff_queue.extend([SHORT_TIME_LIMIT]*2)
+    elif count == 15: apply_fanum_tax()
 
 # ==========================
 # Input with timeout
@@ -1458,107 +1406,67 @@ def unlock_negative_advancement(count):
 def input_with_timeout(prompt, timeout):
     global time_up
     answer = [None]
-
     def ask():
         answer[0] = input(prompt)
-
     thread = threading.Thread(target=ask)
     thread.daemon = True
     thread.start()
     thread.join(timeout)
-
     if thread.is_alive():
         time_up = True
         print("\n⏰ Time's up!")
         return None
-
     return answer[0]
 
 # ==========================
 # Ask a single question
 # ==========================
 def ask_question(q):
-    global time_up, lives, score, current_level
+    global time_up, lives, score, current_level, total_questions_correct, total_questions_wrong
     global questions_correct_in_level, next_question_time_limit, time_debuff_queue
-    global questions_since_last_tax, questions_since_last_shop, coins, total_questions_correct
+    global questions_since_last_tax, questions_since_last_shop, coins
 
     time_up = False
     questions_since_last_tax += 1
     questions_since_last_shop += 1
 
-    # Open shop every 5 correct questions
     if questions_since_last_shop >= 5:
         questions_since_last_shop = 0
         open_shop()
 
-    # Apply time debuff
-    if time_debuff_queue:
-        time_limit = time_debuff_queue.pop(0)
-    else:
-        time_limit = next_question_time_limit
-
-    # Rare Time-Debuff Cancel
-    if time_limit < BASE_TIME_LIMIT:
-        if random.random() < 0.03:
-            if time_limit == SHORT_TIME_LIMIT / 2:
-                time_limit = SHORT_TIME_LIMIT
-            elif time_limit == SHORT_TIME_LIMIT:
-                time_limit = BASE_TIME_LIMIT
-            print(glitch_text("⏱ Time Pressure removed!", total_questions_correct))
-
-    # Dynamic Powerdown Probability
-    start_level = 3
-    end_level = max(level_up_table.keys())
-    min_prob = 0.05
-    max_prob = 1.0
-
-    if current_level >= start_level:
-        powerdown_prob = min_prob + (max_prob - min_prob) * (
-            (current_level - start_level) / (end_level - start_level)
-        )
-        powerdown_prob = min(powerdown_prob, max_prob)
-        q["powerdown"] = random.random() < powerdown_prob
-    else:
-        q["powerdown"] = False
+    time_limit = time_debuff_queue.pop(0) if time_debuff_queue else next_question_time_limit
 
     # Display question
     print("\n==============================")
     print(glitch_text(f"Level {current_level} → {questions_correct_in_level}/{level_up_table[current_level]} → Next Level", total_questions_correct))
-    print(glitch_text(f"Time limit: {time_limit if time_limit else 'Unlimited'} seconds", total_questions_correct))
+    print(glitch_text(f"Time limit: {time_limit} seconds", total_questions_correct))
     print(glitch_text(f"Lives remaining: {lives}", total_questions_correct))
     print(glitch_text(f"Power-ups: Hint({powerups['hint']}), Skip({powerups['skip']}), Freeze({powerups['freeze']})", total_questions_correct))
     print(glitch_text("Question:", total_questions_correct), glitch_text(q["question"], total_questions_correct))
     for choice in q["choices"]:
         print(glitch_text(choice, total_questions_correct))
 
-    answer = input_with_timeout(
-        "Your answer (A/B/C/D) or 'hint', 'skip', 'freeze': ",
-        time_limit
-    )
-
-    # Timeout
+    answer = input_with_timeout("Your answer (A/B/C/D) or 'hint', 'skip', 'freeze': ", time_limit)
     if time_up or answer is None:
         lives -= 1
         print(glitch_text("⏳ You lost a life.", total_questions_correct))
+        total_questions_wrong += 1
+        if total_questions_wrong in ADVANCEMENTS_NEGATIVE and ADVANCEMENTS_NEGATIVE[total_questions_wrong] not in advancements_unlocked:
+            unlock_negative_advancement(total_questions_wrong)
         if lives <= 0:
             print(glitch_text("💀 GAME OVER 💀", total_questions_correct))
-            print(f"Score: {score}")
             sys.exit()
         return False
 
     answer = answer.strip().upper()
-
-    # Power-ups
     if answer == "HINT" and powerups["hint"] > 0:
         powerups["hint"] -= 1
         print(glitch_text("💡 HINT: Trust nothing.", total_questions_correct))
         return ask_question(q)
-
     if answer == "SKIP" and powerups["skip"] > 0:
         powerups["skip"] -= 1
         print(glitch_text("⏭️ Skipped.", total_questions_correct))
         return True
-
     if answer == "FREEZE" and powerups["freeze"] > 0:
         powerups["freeze"] -= 1
         print(glitch_text("🧊 Timer frozen.", total_questions_correct))
@@ -1571,89 +1479,26 @@ def ask_question(q):
         questions_correct_in_level += 1
         coins += 1
         total_questions_correct += 1
-        # ADVANCEMENTS (POSITIVE)
-        if total_questions_correct in ADVANCEMENTS_POSITIVE:
-            name, _ = ADVANCEMENTS_POSITIVE[total_questions_correct]
-            if name not in advancements_unlocked:
-                unlock_positive_advancement(total_questions_correct)
-
-
-        if random.random() < 0.01:
-            lives += 1
-            print(glitch_text("😳 EXTRA LIFE!", total_questions_correct))
-
-        if q.get("powerup"):
-            powerups[q["powerup"]] += 1
-            print(glitch_text(f"🎁 Power-up gained: {q['powerup']}", total_questions_correct))
-
-        leveled_up = False
+        if total_questions_correct in ADVANCEMENTS_POSITIVE and ADVANCEMENTS_POSITIVE[total_questions_correct][0] not in advancements_unlocked:
+            unlock_positive_advancement(total_questions_correct)
         if questions_correct_in_level >= level_up_table[current_level]:
             current_level += 1
             questions_correct_in_level = 0
-            leveled_up = True
             print(glitch_text(f"\n🎉 LEVEL UP → {current_level} 🎉", total_questions_correct))
-
-        # FANUM TAX
-        if current_level >= 6 and (leveled_up or questions_since_last_tax >= 10):
-            questions_since_last_tax = 0
-            if random.random() < 0.05:
-                apply_fanum_tax()
-                pass
-
         return True
 
     # Wrong
-        # ==========================
-    # Wrong Answer
-    # ==========================
-    global total_questions_wrong
-    total_questions_wrong += 1
-
-    # NEGATIVE ADVANCEMENTS
-    if total_questions_wrong in ADVANCEMENTS_NEGATIVE:
-        name = ADVANCEMENTS_NEGATIVE[total_questions_wrong]
-        if name not in advancements_unlocked:
-            unlock_negative_advancement(total_questions_wrong)
-
     print(glitch_text(f"❌ Wrong! Correct answer: {q['correct']}", total_questions_correct))
-
+    total_questions_wrong += 1
     if shop_inventory["second_chance"] > 0:
         shop_inventory["second_chance"] -= 1
         print(glitch_text("🛡️ SECOND CHANCE used! Life saved.", total_questions_correct))
     else:
         lives -= 1
-
-
-    # Time Debuff Logic
-    if current_level >= 5:
-        debuff_chance = min(0.10 + 0.05 * (current_level - 5), 1.0)
-        if random.random() < debuff_chance:
-            debuff_count = 1
-            if current_level >= 10:
-                debuff_count = 2
-            if current_level >= 17:
-                debuff_count += len(time_debuff_queue)
-
-            if current_level >= 20:
-                start_time = time_debuff_queue[-1] if time_debuff_queue else SHORT_TIME_LIMIT
-                for _ in range(debuff_count):
-                    start_time /= 2
-                    time_debuff_queue.append(max(start_time, 1))
-            else:
-                time_debuff_queue.extend([SHORT_TIME_LIMIT] * debuff_count)
-
-            print(glitch_text("⚠️ Time pressure intensifies...", total_questions_correct))
-
+    if total_questions_wrong in ADVANCEMENTS_NEGATIVE and ADVANCEMENTS_NEGATIVE[total_questions_wrong] not in advancements_unlocked:
+        unlock_negative_advancement(total_questions_wrong)
     if lives <= 0:
         print(glitch_text("💀 GAME OVER 💀", total_questions_correct))
-        print(f"Score: {score}")
-        print("\n==============================")
-        print("\n🎉 Credits & Acknowledgments 🎉")
-        print("Game Design & Development: Hyper Gaming")
-        print("Special Thanks to ChatGPT for code review and shop mechanics!")
-        print("All questions curated and verified by Hyper Gaming")
-        print("Better luck next time!")
-        print("\n==============================\n")
         sys.exit()
 
     next_question_time_limit = BASE_TIME_LIMIT
@@ -1664,48 +1509,36 @@ def ask_question(q):
 # ==========================
 TOTAL_QUESTIONS = 10000
 counter = 0
-
-# Track sequence for secret ending
 secret_sequence = []
 secret_triggered = False
 
 while counter < TOTAL_QUESTIONS:
-    # Randomize question order each round
     for q in random.sample(questions, len(questions)):
         ask_question(q)
         counter += 1
 
-        # Check for glitch effect near 6000 multiples
         if 5995 <= counter % 6000 <= 6000:
-            # Inject some glitching when printing next question prompt
             print("⚠️ ??? GLITCH ??? ⚠️")
 
-        # Check secret ending condition
-        if not secret_triggered and counter >= 6000:
-            # Add the result to the secret sequence tracker
-            # 1 = correct, 0 = wrong
-            secret_sequence.append(1 if q.get("correct") else 0)  # adjust as needed
-            if len(secret_sequence) > 10:
-                secret_sequence.pop(0)
-
-            # Example secret pattern: 5 wrong, 2 right, 3 wrong
-            pattern = [0,0,0,0,0,1,1,0,0,0]
-            if secret_sequence == pattern:
-                print("\n🎉 SECRET ENDING REVEALED! 🎉")
-                print("\n==============================")
-                print("🏆 IMPOSSIBLE QUIZ COMPLETION 🏆")
-                print("Congratulations, you've conquered the quiz!")
-                print("\n🎉 Credits & Acknowledgments 🎉")
-                print("Game Design & Development: Hyper Gaming")
-                print("Special Thanks to ChatGPT for code review and shop mechanics!")
-                print("All questions curated and verified by Hyper Gaming")
-                print("Thank you for playing this monster of a quiz! 👾")
-                print("\n==============================\n")
-
-                secret_triggered = True
+        # Track for secret ending (example pattern)
+        secret_sequence.append(1 if q.get("correct") else 0)
+        if len(secret_sequence) > 10:
+            secret_sequence.pop(0)
+        pattern = [0,0,0,0,0,1,1,0,0,0]
+        if not secret_triggered and secret_sequence == pattern:
+            print("\n🎉 SECRET ENDING REVEALED! 🎉")
+            print("\n==============================")
+            print("🏆 IMPOSSIBLE QUIZ COMPLETION 🏆")
+            print("Congratulations, you've conquered the quiz!")
+            print("\n🎉 Credits & Acknowledgments 🎉")
+            print("Game Design & Development: Hyper Gaming")
+            print("Special Thanks to ChatGPT for code review and shop mechanics!")
+            print("All questions curated and verified by Hyper Gaming")
+            print("Thank you for playing this monster of a quiz! 👾")
+            print("\n==============================\n")
+            secret_triggered = True
 
         if counter >= TOTAL_QUESTIONS:
             break
-
 
 
