@@ -1419,9 +1419,163 @@ def input_with_timeout(prompt, timeout):
     return answer[0]
 
 # ==========================
+# Terminal Chaos Mode Helpers
+# ==========================
+
+def trigger_mystery_box():
+    """Randomly offer the player a Mystery Box with risk/reward."""
+    global coins, lives, powerups
+    if random.random() < 0.02:  # 2% chance per question
+        cost = random.randint(2, 6)
+        print(f"\n🎁 MYSTERY BOX AVAILABLE! Spend {cost} coins? (yes/no)")
+        choice = input("> ").strip().lower()
+        if choice == "yes":
+            if coins < cost:
+                print("💸 Not enough coins to buy the box.")
+                return
+            coins -= cost
+            outcome = random.random()
+            if outcome < 0.3:  # 30% gain a powerup
+                key = random.choice(list(powerups.keys()))
+                powerups[key] += 1
+                print(f"🎉 Lucky! You gained a power-up: {key}")
+            elif outcome < 0.6:  # 30% lose a powerup
+                key = random.choice([k for k in powerups if powerups[k] > 0])
+                powerups[key] -= 1
+                print(f"💥 Oh no! Lost a power-up: {key}")
+            elif outcome < 0.85:  # 25% gain a life
+                lives += 1
+                print("❤️ Life gained!")
+            elif outcome < 0.99:  # 14% apply a temporary debuff
+                print("⏱ Timer shrinks for next question!")
+                # Example: push a short time limit
+                time_debuff_queue.append(max(3, next_question_time_limit - 5))
+            else:  # 1% instant game over
+                print("💀 SYSTEM ERROR! Just kidding, game continues.")
+                lives=0
+        else:
+            print("🚫 You skipped the Mystery Box.")
+
+def trigger_brainrot():
+    """Occasionally print chaotic text to distract player."""
+    if random.random() < 0.03:  # 3% chance per question
+        spam = ["🤯", "💀", "🤮", "🧠", "@#%$!", "QWERTY!!!", "###$$$%%%"]
+        for _ in range(30):
+            line = "".join(random.choice(spam) for _ in range(20))
+            print(line)
+
+def trigger_screen_blank():
+    """Rarely blanks the terminal for psychological damage."""
+    if random.random() < 0.005:  # 0.5% chance
+        import time
+        print("\n⚠️ TERMINAL FAILURE ⚠️")
+        time.sleep(10)
+
+        # Clear screen using ANSI
+        print("\033[2J\033[H", end="")# ==========================
+# Chaos Mode: Psychological Trolls
+# ==========================
+
+fake_life_loss_active = False
+fake_life_loss_counter = 0
+FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
+
+def trigger_fake_life_loss():
+    """Temporarily convert all player answers to wrong to troll them."""
+    global fake_life_loss_active, fake_life_loss_counter
+    if not fake_life_loss_active and random.random() < 0.01:  # 1% chance
+        fake_life_loss_active = True
+        fake_life_loss_counter = FAKE_LIFE_LOSS_DURATION
+        print("💀 CURSE OF THE WRONG ANSWER! For a few questions, your answers betray you...")
+
+def apply_fake_life_loss(answer):
+    """If fake life loss is active, override any answer to wrong."""
+    global fake_life_loss_active, fake_life_loss_counter
+    if fake_life_loss_active and fake_life_loss_counter > 0:
+        fake_life_loss_counter -= 1
+        # Randomly choose a wrong answer different from the correct one
+        wrong_options = [c for c in ["A", "B", "C", "D"] if c != answer]
+        return random.choice(wrong_options)
+    else:
+        fake_life_loss_active = False
+        return answer
+
+def trigger_gibberish_taunt():
+    """Occasionally spam gibberish or taunt messages at the player."""
+    if random.random() < 0.02:  # 2% chance per question
+        gibberish_lines = [
+            "??? ERROR ??? THE QUIZ HATES YOU !!! %$#@!^&*",
+            "You think you can win? Hahaha!",
+            "No one escapes the Impossible Quiz!",
+            "🤯💀🤮🧠",
+            "SYSTEM MALFUNCTION: ALL ANSWERS WRONG!!!"
+        ]
+        print("\n⚡ QUIZ IS ANGRY ⚡")
+        for line in random.sample(gibberish_lines, k=3):
+            print(line)
+
+        time.sleep(random.uniform(5, 10))  # silence = panic
+
+        # Restore
+        print("\033[2J\033[H", end="")
+        print("...System restored.")
+        print("The quiz is not done with you.\n")
+
+# ==========================
+# Hehe
+# ==========================
+
+fake_life_loss_active = False
+fake_life_loss_counter = 0
+FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
+
+def trigger_fake_life_loss():
+    """Temporarily convert all player answers to wrong to troll them."""
+    global fake_life_loss_active, fake_life_loss_counter
+    if not fake_life_loss_active and random.random() < 0.01:  # 1% chance
+        fake_life_loss_active = True
+        fake_life_loss_counter = FAKE_LIFE_LOSS_DURATION
+        print("💀 CURSE OF THE WRONG ANSWER! For a few questions, your answers betray you...")
+
+def apply_fake_life_loss(answer):
+    """If fake life loss is active, override any answer to wrong."""
+    global fake_life_loss_active, fake_life_loss_counter
+    if fake_life_loss_active and fake_life_loss_counter > 0:
+        fake_life_loss_counter -= 1
+        # Randomly choose a wrong answer different from the correct one
+        wrong_options = [c for c in ["A", "B", "C", "D"] if c != answer]
+        return random.choice(wrong_options)
+    else:
+        fake_life_loss_active = False
+        return answer
+
+def trigger_gibberish_taunt():
+    """Occasionally spam gibberish or taunt messages at the player."""
+    if random.random() < 0.02:  # 2% chance per question
+        gibberish_lines = [
+            "??? ERROR ??? THE QUIZ HATES YOU !!! %$#@!^&*",
+            "You think you can win? Hahaha!",
+            "No one escapes the Impossible Quiz!",
+            "🤯💀🤮🧠",
+            "6767676767676767676767676767676767676767676767676767676767676767676767676767676767"
+            "skibidi mountain toaster aura glitch banana thunder ohio sideways pixel soda asphalt whisper crunch neon apple lag core memory unlocked feral cardboard wifi mosquito latte shadow NPC sidewalk battery depleted corecore spaghetti quantum elbow frog static noon hallway cinnamon laser backpack gravity socks internet penguin echo slime rooftop keyboard microwave fog notification velvet raccoon solar charger dream patch update failed spoon mirror jitter laggy pinecone subway bubble wrap Tuesday scream texture air fryer cactus vinyl pause menu broccoli portal screenshot hum vibration lemonade comet drywall cloud jpeg sneaker breadcrumbs signal lost lemon shark hoodie thermal ketchup sideways rain bookmark hamster cosmic printer stairwell pickle satellite ramen fossil earbuds milk carton dimension rip zip glitchcore lava lamp sidewalk mp3 rewind eyeball static hum cereal paperback cardboard thunder again again again hoverboard marble shoelace typo buffer overflow banana peel algorithm couch pixel dust napkin microwave II uncanny elevator core breach marshmallow bus stop echo echo receipt foghorn mailbox keyboard smash qwerty potato vibe check failed timestamp moth sweater soup crouton lunar socks.exe rebooting please wait neon gum static pop buzz whirr clank drip drop underscore underscore underscore skrrt plankton wifi dead emoji skull skull skull sideways chair aura minus ten breadcrumbs orbit noodle panic calm panic calm flashlight carpet citrus jingle chrome tab 47 still loading still loading still loading"
+            "SYSTEM MALFUNCTION: ALL ANSWERS WRONG!!!"
+        ]
+        print("\n⚡ QUIZ IS ANGRY ⚡")
+        for line in random.sample(gibberish_lines, k=3):
+            print(line)
+
+
+# ==========================
 # Ask a single question
 # ==========================
 def ask_question(q):
+    trigger_mystery_box()
+    trigger_brainrot()
+    trigger_screen_blank()
+    trigger_fake_life_loss()
+    trigger_gibberish_taunt()
+
     global time_up, lives, score, current_level, total_questions_correct, total_questions_wrong
     global questions_correct_in_level, next_question_time_limit, time_debuff_queue
     global questions_since_last_tax, questions_since_last_shop, coins
@@ -1459,6 +1613,8 @@ def ask_question(q):
         return False
 
     answer = answer.strip().upper()
+    # Apply fake life loss
+    answer = apply_fake_life_loss(answer)
     if answer == "HINT" and powerups["hint"] > 0:
         powerups["hint"] -= 1
         print(glitch_text("💡 HINT: Trust nothing.", total_questions_correct))
