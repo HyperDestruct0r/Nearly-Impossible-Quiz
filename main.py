@@ -2,6 +2,74 @@
 # Questions
 # =============================
 
+# ==========================
+# ANSI Text Colors
+# ==========================
+RESET = "\033[0m"
+
+BLACK = "\033[30m"
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+
+# Bright colors
+BRIGHT_BLACK = "\033[90m"
+BRIGHT_RED = "\033[91m"
+BRIGHT_GREEN = "\033[92m"
+BRIGHT_YELLOW = "\033[93m"
+BRIGHT_BLUE = "\033[94m"
+BRIGHT_MAGENTA = "\033[95m"
+BRIGHT_CYAN = "\033[96m"
+BRIGHT_WHITE = "\033[97m"
+
+# ==========================
+# Background Colors
+# ==========================
+BG_BLACK = "\033[40m"
+BG_RED = "\033[41m"
+BG_GREEN = "\033[42m"
+BG_YELLOW = "\033[43m"
+BG_BLUE = "\033[44m"
+BG_MAGENTA = "\033[45m"
+BG_CYAN = "\033[46m"
+BG_WHITE = "\033[47m"
+
+# Bright backgrounds
+BG_BRIGHT_BLACK = "\033[100m"
+BG_BRIGHT_RED = "\033[101m"
+BG_BRIGHT_GREEN = "\033[102m"
+BG_BRIGHT_YELLOW = "\033[103m"
+BG_BRIGHT_BLUE = "\033[104m"
+BG_BRIGHT_MAGENTA = "\033[105m"
+BG_BRIGHT_CYAN = "\033[106m"
+BG_BRIGHT_WHITE = "\033[107m"
+
+# ==========================
+# Text Styles
+# ==========================
+BOLD = "\033[1m"
+DIM = "\033[2m"
+ITALIC = "\033[3m"
+UNDERLINE = "\033[4m"
+BLINK = "\033[5m"
+REVERSE = "\033[7m"
+HIDDEN = "\033[8m"
+STRIKETHROUGH = "\033[9m"
+
+# ==========================
+# Cursor / Screen Control
+# ==========================
+CLEAR_SCREEN = "\033[2J"
+CLEAR_LINE = "\033[2K"
+CURSOR_HOME = "\033[H"
+HIDE_CURSOR = "\033[?25l"
+SHOW_CURSOR = "\033[?25h"
+
+
 questions = [
     {"question": "What is 2 + 2?",
      "choices": ["A) 3", "B) 4", "C) 5", "D) 22"],
@@ -1256,13 +1324,13 @@ SHOP_DESCRIPTIONS = {
 
 # Advancements still in progress!
 ADVANCEMENTS_POSITIVE = {
-    5:  ("Getting Warm", 1),
-    10: ("In the Zone", 5),
-    25: ("Momentum", 10),
-    50: ("Quiz Grinder", 15),
-    100: ("Unstoppable", 20),
-    250: ("Mental Fortress", 25),
-    500: ("Impossible Being", 30),
+    5:   ("Getting Warm", {"coins": 3, "remove_debuff": 1}),
+    10:  ("In the Zone", {"coins": 5, "lives": 1}),
+    25:  ("Momentum", {"freeze": 1, "remove_debuff": 1}),
+    50:  ("Quiz Grinder", {"second_chance": 1, "coins": 8}),
+    100: ("Unstoppable", {"lives": 1, "coins": 5}),
+    250: ("Mental Fortress", {"hint": 1, "skip": 1}),
+    500: ("Impossible Being", {"lives": 1, "coins": 2, "remove_debuff": 1}),
 }
 
 ADVANCEMENTS_NEGATIVE = {
@@ -1286,8 +1354,8 @@ questions_since_last_shop = 0
 current_level = 1
 questions_correct_in_level = 0
 
-BASE_TIME_LIMIT = 15
-SHORT_TIME_LIMIT = 7
+BASE_TIME_LIMIT = 30
+SHORT_TIME_LIMIT = BASE_TIME_LIMIT/2
 
 # Time debuff state
 time_debuff_queue = []
@@ -1376,29 +1444,111 @@ def open_shop():
 # Advancements
 # ==========================
 def unlock_positive_advancement(count):
-    global coins
-    name, reward = ADVANCEMENTS_POSITIVE[count]
+    """
+    Unlocks a positive advancement based on total_questions_correct.
+    Grants coins, power-ups, lives, or removes debuffs depending on milestone.
+    """
+    global coins, lives, powerups, time_debuff_queue
+
+    if count not in ADVANCEMENTS_POSITIVE:
+        return  # no advancement for this count
+
+    name, rewards = ADVANCEMENTS_POSITIVE[count]
     advancements_unlocked.add(name)
-    coins += reward
     print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}!", total_questions_correct))
 
+    # Apply rewards
+    if "coins" in rewards:
+        coins += rewards["coins"]
+        print(f"💰 Coins +{rewards['coins']} (total: {coins})")
+    if "lives" in rewards:
+        lives += rewards["lives"]
+        print(f"❤️ Lives +{rewards['lives']} (total: {lives})")
+    if "hint" in rewards:
+        powerups["hint"] += rewards["hint"]
+        print(f"💡 Hint +{rewards['hint']} (total: {powerups['hint']})")
+    if "skip" in rewards:
+        powerups["skip"] += rewards["skip"]
+        print(f"⏭ Skip +{rewards['skip']} (total: {powerups['skip']})")
+    if "freeze" in rewards:
+        powerups["freeze"] += rewards["freeze"]
+        print(f"🧊 Freeze +{rewards['freeze']} (total: {powerups['freeze']})")
+    if "second_chance" in rewards:
+        shop_inventory["second_chance"] += rewards["second_chance"]
+        print(f"🛡️ Second Chance +{rewards['second_chance']} (total: {shop_inventory['second_chance']})")
+    if "remove_debuff" in rewards:
+        for _ in range(rewards["remove_debuff"]):
+            if time_debuff_queue:
+                removed = time_debuff_queue.pop(0)
+                print(f"⏱ Time debuff removed ({removed}s)")
+
 def unlock_negative_advancement(count):
-    global coins, lives, time_debuff_queue
+    global coins, lives, time_debuff_queue, BASE_TIME_LIMIT
     name = ADVANCEMENTS_NEGATIVE[count]
     advancements_unlocked.add(name)
+
     print(glitch_text(f"🏆 ADVANCEMENT UNLOCKED: {name}", total_questions_correct))
-    if count == 1: coins = max(0, coins - 1)
-    elif count == 2: time_debuff_queue.append(SHORT_TIME_LIMIT)
+
+    # ==========================
+    # KILLER UPGRADE: FAILURE CASCADE
+    # ==========================
+    severity = min(count // 3, 6)
+
+    if severity > 0:
+        # Stack short timers aggressively
+        time_debuff_queue.extend([SHORT_TIME_LIMIT] * severity)
+        print(glitch_text(f"⏱ FAILURE CASCADE x{severity}", total_questions_correct))
+
+        # Coin bleed
+        bleed = min(coins, severity)
+        coins -= bleed
+        if bleed > 0:
+            print(glitch_text(f"💸 Coin bleed: -{bleed}", total_questions_correct))
+
+        # High severity starts hurting lives
+        if severity >= 5 and random.random() < 0.4:
+            lives -= 1
+            print(glitch_text("💔 Collapse damage! Lost 1 life", total_questions_correct))
+
+    # ==========================
+    # Milestone punishments (upgraded)
+    # ==========================
+    if count == 1:
+        coins = max(0, coins - 5)
+
+    elif count == 2:
+        time_debuff_queue.append(SHORT_TIME_LIMIT)
+
     elif count == 3:
         removable = [k for k in powerups if powerups[k] > 0]
         if removable:
             lost = random.choice(removable)
             powerups[lost] -= 1
-            print(f"💥 Lost power-up: {lost}")
-    elif count == 5: time_debuff_queue.append(max(BASE_TIME_LIMIT-5,3))
-    elif count == 7: lives -= 1; print("💔 Lost 1 life")
-    elif count == 11: time_debuff_queue.extend([SHORT_TIME_LIMIT]*2)
-    elif count == 15: apply_fanum_tax()
+            print(glitch_text(f"💥 Power-up corrupted: {lost}", total_questions_correct))
+
+    elif count == 5:
+        time_debuff_queue.append(max(BASE_TIME_LIMIT - 10, 3))
+
+    elif count == 7:
+        lives -= 1
+        print(glitch_text("💔 Lost 1 life", total_questions_correct))
+
+    elif count == 11:
+        time_debuff_queue.extend([SHORT_TIME_LIMIT] * 3)
+
+    elif count == 15:
+        for _ in range(3):
+            apply_fanum_tax()
+
+        # Rare permanent damage
+        if BASE_TIME_LIMIT > 15 and random.random() < 0.5:
+            BASE_TIME_LIMIT -= 5
+            print(glitch_text("🧠 PERMANENT TIME DAMAGE!", total_questions_correct))
+
+
+    elif count == 15: 
+        for i in range(3):
+            apply_fanum_tax()
 
 # ==========================
 # Input with timeout
@@ -1463,6 +1613,7 @@ def trigger_brainrot():
         for _ in range(30):
             line = "".join(random.choice(spam) for _ in range(20))
             print(line)
+            time.sleep(3)
 
 def trigger_screen_blank():
     """Rarely blanks the terminal for psychological damage."""
@@ -1472,7 +1623,9 @@ def trigger_screen_blank():
         time.sleep(10)
 
         # Clear screen using ANSI
-        print("\033[2J\033[H", end="")# ==========================
+        print("\033[2J\033[H", end="")
+        
+# ==========================
 # Chaos Mode: Psychological Trolls
 # ==========================
 
@@ -1592,10 +1745,12 @@ def ask_question(q):
 
     # Display question
     print("\n==============================")
-    print(glitch_text(f"Level {current_level} → {questions_correct_in_level}/{level_up_table[current_level]} → Next Level", total_questions_correct))
-    print(glitch_text(f"Time limit: {time_limit} seconds", total_questions_correct))
-    print(glitch_text(f"Lives remaining: {lives}", total_questions_correct))
-    print(glitch_text(f"Power-ups: Hint({powerups['hint']}), Skip({powerups['skip']}), Freeze({powerups['freeze']})", total_questions_correct))
+    print(glitch_text(f"{BLUE}Level {current_level}{RESET} → {RED}{questions_correct_in_level}/{level_up_table[current_level]}{RESET} → {YELLOW}Next Level{RESET}", total_questions_correct))
+    print(glitch_text(f"{BRIGHT_MAGENTA}Time limit: {time_limit} seconds{RESET}", total_questions_correct))
+    print(glitch_text(f"Lives remaining: {BRIGHT_RED}{lives}"+RESET, total_questions_correct))
+    print(glitch_text(f"{BRIGHT_CYAN}Power-ups: {BRIGHT_YELLOW}Hint({powerups['hint']}){RESET}, {BRIGHT_GREEN}Skip({powerups['skip']}){RESET}, {BRIGHT_BLUE}Freeze({powerups['freeze']}){RESET}", total_questions_correct))
+
+    print(f"{BRIGHT_BLACK}\n------------------------------\n{RESET}")
     print(glitch_text("Question:", total_questions_correct), glitch_text(q["question"], total_questions_correct))
     for choice in q["choices"]:
         print(glitch_text(choice, total_questions_correct))
