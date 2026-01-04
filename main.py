@@ -1346,7 +1346,19 @@ ADVANCEMENTS_NEGATIVE = {
 shop_cooldown = 0  # prevents shop spam
 
 powerups = {"hint": 1, "skip": 1, "freeze": 1}
+import random
+
+# Real & fake lives
 lives = 3
+fake_lives = 5
+
+# Curse state
+fake_life_loss_active = False
+fake_life_loss_counter = 0
+
+FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
+FAKE_LIFE_LOSS_CHANCE = 1.0  # 1% chance (set to 1.0 for testing)
+
 score = 0
 questions_since_last_tax = 0
 questions_since_last_shop = 0
@@ -1609,17 +1621,23 @@ def trigger_mystery_box():
 def trigger_brainrot():
     """Occasionally print chaotic text to distract player."""
     if random.random() < 0.03:  # 3% chance per question
-        spam = ["🤯", "💀", "🤮", "🧠", "@#%$!", "QWERTY!!!", "###$$$%%%"]
+        print(CLEAR_SCREEN)
+        spam = ["🤯", "💀", "🤮", "🧠", "@#%$!", "QWERTY!!!", "###$$$%%%###$$$%%%"]
         for _ in range(30):
             line = "".join(random.choice(spam) for _ in range(20))
             print(line)
-            time.sleep(3)
+            import time
+            time.sleep(0.5)
+        time.sleep(3)
+        print(CLEAR_SCREEN)
 
 def trigger_screen_blank():
     """Rarely blanks the terminal for psychological damage."""
     if random.random() < 0.005:  # 0.5% chance
         import time
         print("\n⚠️ TERMINAL FAILURE ⚠️")
+        time.sleep(1)
+        print(CLEAR_SCREEN)
         time.sleep(10)
 
         # Clear screen using ANSI
@@ -1633,25 +1651,35 @@ fake_life_loss_active = False
 fake_life_loss_counter = 0
 FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
 
-def trigger_fake_life_loss():
-    """Temporarily convert all player answers to wrong to troll them."""
+def fake_life_loss_curse(is_correct):
+    """
+    Forces answers to be treated as wrong while cursed,
+    but flags them as FAKE losses so real lives are not touched.
+
+    Returns: (is_correct, is_fake_loss)
+    """
     global fake_life_loss_active, fake_life_loss_counter
-    if not fake_life_loss_active and random.random() < 0.01:  # 1% chance
+
+    # Trigger curse if inactive
+    if not fake_life_loss_active and random.random() < FAKE_LIFE_LOSS_CHANCE:
         fake_life_loss_active = True
         fake_life_loss_counter = FAKE_LIFE_LOSS_DURATION
-        print("💀 CURSE OF THE WRONG ANSWER! For a few questions, your answers betray you...")
+        print("👻 A curse descends... reality feels off.")
 
-def apply_fake_life_loss(answer):
-    """If fake life loss is active, override any answer to wrong."""
-    global fake_life_loss_active, fake_life_loss_counter
-    if fake_life_loss_active and fake_life_loss_counter > 0:
+    # Apply curse
+    if fake_life_loss_active:
         fake_life_loss_counter -= 1
-        # Randomly choose a wrong answer different from the correct one
-        wrong_options = [c for c in ["A", "B", "C", "D"] if c != answer]
-        return random.choice(wrong_options)
-    else:
-        fake_life_loss_active = False
-        return answer
+
+        if fake_life_loss_counter <= 0:
+            fake_life_loss_active = False
+
+        # Force wrong, mark as fake
+        return False, True
+
+    # Normal behavior
+    return is_correct, False
+
+
 
 def trigger_gibberish_taunt():
     """Occasionally spam gibberish or taunt messages at the player."""
@@ -1682,25 +1710,29 @@ fake_life_loss_active = False
 fake_life_loss_counter = 0
 FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
 
-def trigger_fake_life_loss():
-    """Temporarily convert all player answers to wrong to troll them."""
+def maybe_apply_fake_life_curse(is_correct):
+    """
+    If the curse is active, force the answer to be treated as wrong,
+    but mark it as a FAKE loss.
+    Returns: (is_correct, is_fake_loss)
+    """
     global fake_life_loss_active, fake_life_loss_counter
-    if not fake_life_loss_active and random.random() < 0.01:  # 1% chance
+
+    # Trigger curse
+    if not fake_life_loss_active and random.random() < FAKE_LIFE_LOSS_CHANCE:
         fake_life_loss_active = True
         fake_life_loss_counter = FAKE_LIFE_LOSS_DURATION
-        print("💀 CURSE OF THE WRONG ANSWER! For a few questions, your answers betray you...")
+        print("👻 REALITY DISTORTS… Your answers feel unreliable.")
 
-def apply_fake_life_loss(answer):
-    """If fake life loss is active, override any answer to wrong."""
-    global fake_life_loss_active, fake_life_loss_counter
-    if fake_life_loss_active and fake_life_loss_counter > 0:
+    # Apply curse
+    if fake_life_loss_active:
         fake_life_loss_counter -= 1
-        # Randomly choose a wrong answer different from the correct one
-        wrong_options = [c for c in ["A", "B", "C", "D"] if c != answer]
-        return random.choice(wrong_options)
-    else:
-        fake_life_loss_active = False
-        return answer
+        if fake_life_loss_counter <= 0:
+            fake_life_loss_active = False
+        return False, True  # force wrong, but FAKE
+
+    return is_correct, False
+
 
 def trigger_gibberish_taunt():
     """Occasionally spam gibberish or taunt messages at the player."""
@@ -1726,10 +1758,9 @@ def ask_question(q):
     trigger_mystery_box()
     trigger_brainrot()
     trigger_screen_blank()
-    trigger_fake_life_loss()
     trigger_gibberish_taunt()
 
-    global time_up, lives, score, current_level, total_questions_correct, total_questions_wrong
+    global time_up, lives, fake_lives, score, current_level, total_questions_correct, total_questions_wrong
     global questions_correct_in_level, next_question_time_limit, time_debuff_queue
     global questions_since_last_tax, questions_since_last_shop, coins
 
@@ -1768,52 +1799,68 @@ def ask_question(q):
         return False
 
     answer = answer.strip().upper()
-    # Apply fake life loss
-    answer = apply_fake_life_loss(answer)
     if answer == "HINT" and powerups["hint"] > 0:
         powerups["hint"] -= 1
-        print(glitch_text("💡 HINT: Trust nothing.", total_questions_correct))
+        print(glitch_text(f"{BRIGHT_YELLOW}💡 HINT: Trust nothing.{RESET}", total_questions_correct))
         return ask_question(q)
     if answer == "SKIP" and powerups["skip"] > 0:
         powerups["skip"] -= 1
-        print(glitch_text("⏭️ Skipped.", total_questions_correct))
+        print(glitch_text(f"⏭️{BRIGHT_GREEN} Skipped.{RESET}", total_questions_correct))
         return True
     if answer == "FREEZE" and powerups["freeze"] > 0:
         powerups["freeze"] -= 1
-        print(glitch_text("🧊 Timer frozen.", total_questions_correct))
+        print(glitch_text(f"🧊'{BRIGHT_BLUE} Timer frozen.{RESET}", total_questions_correct))
         return ask_question(q)
 
-    # Correct
-    if answer == q["correct"]:
+    # Determine correctness normally
+    is_correct = (answer == q["correct"])
+    
+    # Apply fake-life curse override
+    is_correct, is_fake_loss = maybe_apply_fake_life_curse(is_correct)
+    
+    if is_correct:
         print(glitch_text("✅ Correct!", total_questions_correct))
         score += 1
         questions_correct_in_level += 1
         coins += 1
         total_questions_correct += 1
-        if total_questions_correct in ADVANCEMENTS_POSITIVE and ADVANCEMENTS_POSITIVE[total_questions_correct][0] not in advancements_unlocked:
+    
+        if total_questions_correct in ADVANCEMENTS_POSITIVE and \
+           ADVANCEMENTS_POSITIVE[total_questions_correct][0] not in advancements_unlocked:
             unlock_positive_advancement(total_questions_correct)
+    
         if questions_correct_in_level >= level_up_table[current_level]:
             current_level += 1
             questions_correct_in_level = 0
             print(glitch_text(f"\n🎉 LEVEL UP → {current_level} 🎉", total_questions_correct))
+    
         return True
-
-    # Wrong
+    
+    # ---------------- WRONG ANSWER ----------------
     print(glitch_text(f"❌ Wrong! Correct answer: {q['correct']}", total_questions_correct))
     total_questions_wrong += 1
-    if shop_inventory["second_chance"] > 0:
-        shop_inventory["second_chance"] -= 1
-        print(glitch_text("🛡️ SECOND CHANCE used! Life saved.", total_questions_correct))
+    
+    if is_fake_loss:
+        fake_lives -= 1
+        print(glitch_text("Wrong!  Correct answer: ###$$$%%%###$$$%%%", total_questions_correct))
     else:
-        lives -= 1
-    if total_questions_wrong in ADVANCEMENTS_NEGATIVE and ADVANCEMENTS_NEGATIVE[total_questions_wrong] not in advancements_unlocked:
-        unlock_negative_advancement(total_questions_wrong)
+        if shop_inventory["second_chance"] > 0:
+            shop_inventory["second_chance"] -= 1
+            print(glitch_text("🛡️ SECOND CHANCE used! Life saved.", total_questions_correct))
+        else:
+            lives -= 1
+    
+        if total_questions_wrong in ADVANCEMENTS_NEGATIVE and \
+           ADVANCEMENTS_NEGATIVE[total_questions_wrong] not in advancements_unlocked:
+            unlock_negative_advancement(total_questions_wrong)
+    
     if lives <= 0:
         print(glitch_text("💀 GAME OVER 💀", total_questions_correct))
         sys.exit()
-
+    
     next_question_time_limit = BASE_TIME_LIMIT
     return False
+
 
 # ==========================
 # Game Loop
