@@ -1709,13 +1709,11 @@ def trigger_gibberish_taunt():
 fake_life_loss_active = False
 fake_life_loss_counter = 0
 FAKE_LIFE_LOSS_DURATION = 3  # number of questions affected
-
+"""
 def maybe_apply_fake_life_curse(is_correct):
-    """
-    If the curse is active, force the answer to be treated as wrong,
-    but mark it as a FAKE loss.
-    Returns: (is_correct, is_fake_loss)
-    """
+    #If the curse is active, force the answer to be treated as wrong,
+    #but mark it as a FAKE loss.
+    #Returns: (is_correct, is_fake_loss)
     global fake_life_loss_active, fake_life_loss_counter
 
     # Trigger curse
@@ -1732,7 +1730,7 @@ def maybe_apply_fake_life_curse(is_correct):
         return False, True  # force wrong, but FAKE
 
     return is_correct, False
-
+"""
 
 def trigger_gibberish_taunt():
     """Occasionally spam gibberish or taunt messages at the player."""
@@ -1750,6 +1748,320 @@ def trigger_gibberish_taunt():
         for line in random.sample(gibberish_lines, k=3):
             print(line)
 
+minigame_active = False  # prevent overlapping minigames
+
+# ---------------- Globals ----------------
+TIME_DODGE_WIDTH = 10   # width of the play area
+TIME_DODGE_HEIGHT = 8   # number of rows
+TIME_DODGE_TICKS = 120   # total updates (roughly 7.5 seconds)
+TIME_DODGE_REFRESH = 0.25
+TIME_DEBUFF_MAX = 10    # max debuffs applied
+
+# Global for next_question_time_limit adjustment
+time_debuff_queue = []
+next_question_time_limit = 30
+
+# ---------------- Input handler ----------------
+player_input = None
+def capture_input():
+    import time
+    """Capture single-character input asynchronously."""
+    global player_input
+    try:
+        player_input = input()
+    except:
+        pass
+
+# ---------------- Time Dodge Minigame ----------------
+def run_time_dodge():
+    import time
+    global player_input, time_debuff_queue, next_question_time_limit
+
+    print("\n⚡ DODGE THE FALLING ⏰! ⚡")
+    time.sleep(1)  # flash intro
+    print("\033[2J\033[H", end="")  # clear terminal
+
+    # Initialize player and falling debuffs
+    player_pos = TIME_DODGE_WIDTH // 2
+    debuffs = []  # list of tuples (row, col)
+    debuffs_hit = 0
+
+    for tick in range(TIME_DODGE_TICKS):
+        # Spawn a new falling debuff randomly
+        if random.random() < 0.3:  # 30% chance a new debuff appears
+            debuffs.append([0, random.randint(0, TIME_DODGE_WIDTH-1)])
+
+        # Move debuffs down
+        for d in debuffs:
+            d[0] += 1
+
+        # Check for hits
+        new_debuffs = []
+        for d in debuffs:
+            if d[0] == TIME_DODGE_HEIGHT-1:
+                if d[1] == player_pos:
+                    debuffs_hit += 1
+                # Don't keep this debuff (it reached bottom)
+            else:
+                new_debuffs.append(d)
+        debuffs = new_debuffs
+
+        # Display the grid
+        print("\033[2J\033[H", end="")  # clear terminal
+        print("⬛" * (TIME_DODGE_WIDTH + 2))
+        for row in range(TIME_DODGE_HEIGHT):
+            line = "⬛"
+            for col in range(TIME_DODGE_WIDTH):
+                # Draw debuff
+                if [row, col] in debuffs:
+                    line += "⏰"
+                # Draw player
+                elif row == TIME_DODGE_HEIGHT-1 and col == player_pos:
+                    line += "🙂"
+                else:
+                    line += " "
+            line += "⬛"
+            print(line)
+        print("⬛" * (TIME_DODGE_WIDTH + 2))
+        print(f"Debuffs hit: {debuffs_hit}   (Move with 'l' or 'r')")
+
+        # Capture player input asynchronously
+        player_input = None
+        input_thread = threading.Thread(target=capture_input)
+        input_thread.daemon = True
+        input_thread.start()
+
+        start_time = time.time()
+        while time.time() - start_time < TIME_DODGE_REFRESH:
+            time.sleep(0.01)
+            if player_input:
+                move = player_input.lower()
+                # 2.5% chance opposite or no move
+                roll = random.random()
+                if roll < 0.025:
+                    move = "l" if move=="r" else "r"  # move opposite
+                elif roll < 0.05:
+                    move = None  # do nothing
+                if move == "l" and player_pos > 0:
+                    player_pos -= 1
+                elif move == "r" and player_pos < TIME_DODGE_WIDTH-1:
+                    player_pos += 1
+                break  # process only 1 input per tick
+
+    print("\n⏹️ Minigame over!")
+    print(f"Debuffs hit: {debuffs_hit}")
+
+    # Apply to next question
+    num_questions = min(max(debuffs_hit // 2, 1), TIME_DEBUFF_MAX)
+    for _ in range(num_questions):
+        time_debuff_queue.append(SHORT_TIME_LIMIT)
+    print(f"Next {num_questions} questions will have reduced time! ({SHORT_TIME_LIMIT}s each)")
+    time.sleep(2)
+
+# ==========================
+# Maze Generation
+# ==========================
+def generate_maze(rows=7, cols=7):
+    """Generates a random maze using Recursive Backtracking"""
+    maze = [["#"]*cols for _ in range(rows)]
+    
+    def carve(r, c):
+        maze[r][c] = "."
+        directions = [(0,1),(0,-1),(1,0),(-1,0)]
+        random.shuffle(directions)
+        for dr, dc in directions:
+            nr, nc = r+2*dr, c+2*dc
+            if 0 <= nr < rows and 0 <= nc < cols and maze[nr][nc] == "#":
+                maze[r+dr][c+dc] = "."
+                carve(nr, nc)
+    
+    # Start at random odd position
+    start_r, start_c = random.randrange(0, rows, 2), random.randrange(0, cols, 2)
+    carve(start_r, start_c)
+    maze[start_r][start_c] = "S"
+    
+    # Pick random exit on edge
+    exits = []
+    for i in range(rows):
+        for j in [0, cols-1]:
+            if maze[i][j] == ".":
+                exits.append((i,j))
+    for j in range(cols):
+        for i in [0, rows-1]:
+            if maze[i][j] == ".":
+                exits.append((i,j))
+    if not exits:
+        exits.append((rows-1, cols-1))
+    er, ec = random.choice(exits)
+    maze[er][ec] = "E"
+    
+    return maze, (start_r, start_c), (er, ec)
+
+# ==========================
+# Display Maze
+# ==========================
+def display_maze(maze, player_pos):
+    print("\033[2J\033[H", end="")  # clear terminal
+    for r, row in enumerate(maze):
+        line = ""
+        for c, cell in enumerate(row):
+            if (r, c) == player_pos:
+                line += "P"
+            else:
+                line += cell
+        print(line)
+    print("Move with W/A/S/D. Reach 'E' to escape!")
+
+# ==========================
+# Maze Minigame
+# ==========================
+def maze_minigame(time_limit=20):
+    import time
+    global powerups, time_debuff_queue
+    
+    maze, start, exit_pos = generate_maze()
+    player_r, player_c = start
+    
+    start_time = time.time()
+    time_up = False
+
+    def timer():
+        nonlocal time_up
+        while time.time() - start_time < time_limit:
+            time.sleep(0.1)
+        time_up = True
+
+    threading.Thread(target=timer, daemon=True).start()
+    
+    while not time_up:
+        display_maze(maze, (player_r, player_c))
+        move = input("Your move: ").strip().upper()
+        if move not in ("W","A","S","D"):
+            print("Invalid move!")
+            continue
+        dr, dc = 0, 0
+        if move == "W": dr = -1
+        if move == "S": dr = 1
+        if move == "A": dc = -1
+        if move == "D": dc = 1
+        nr, nc = player_r+dr, player_c+dc
+        if 0 <= nr < len(maze) and 0 <= nc < len(maze[0]) and maze[nr][nc] != "#":
+            player_r, player_c = nr, nc
+        if (player_r, player_c) == exit_pos:
+            print("🎉 You escaped the maze!")
+            choice = random.choice(list(powerups.keys()))
+            powerups[choice] += 1
+            print(f"🎁 Reward: 1 {choice} power-up!")
+            # 10% chance of fanum tax
+            if random.random() < 0.1:
+                print("💀 FANUM TAX! Losing a random power-up...")
+                removable = [k for k in powerups if powerups[k] > 0]
+                if removable:
+                    lost = random.choice(removable)
+                    powerups[lost] -= 1
+                    print(f"💥 Lost power-up: {lost}")
+            return True
+
+    print("⏰ Time's up! You failed to escape.")
+    # Punishment: add time debuff 3 sec
+    time_debuff_queue.append(3)
+    return False
+
+import random
+import time
+
+# Example Minesweeper minigame trigger
+def trigger_minesweeper():
+    """
+    Randomly triggers a Minesweeper mini-game with a 2% chance.
+    Player must clear the board (or a subset) under a time limit,
+    otherwise they lose 1-2 lives.
+    """
+    if random.random() < 0.02:  # 2% chance per question
+        print("\n💣 MINESWEEPER CHALLENGE!")
+        print("You have 15 seconds to clear a small 5x5 minefield!")
+        print("Clear all safe spots without hitting a mine.")
+
+        # Generate a tiny 5x5 board with 3 mines
+        size = 5
+        mines_count = 3
+        board = [[" " for _ in range(size)] for _ in range(size)]
+        mine_positions = random.sample(range(size*size), mines_count)
+        for pos in mine_positions:
+            x, y = divmod(pos, size)
+            board[x][y] = "M"  # hidden mine
+
+        # Show a blank board for the player
+        display_board = [["." for _ in range(size)] for _ in range(size)]
+        for row in display_board:
+            print(" ".join(row))
+
+        start_time = time.time()
+        cleared = 0
+        max_time = 15  # seconds
+
+        while cleared < size*size - mines_count and time.time() - start_time < max_time:
+            try:
+                move = input("Enter cell to clear (row,col): ")
+                row, col = map(int, move.strip().split(","))
+                if board[row][col] == "M":
+                    print("💥 Boom! You hit a mine!")
+                    lives_lost = random.randint(1, 2)
+                    print(f"💔 Lost {lives_lost} lives!")
+                    global lives
+                    lives -= lives_lost
+                    return False
+                else:
+                    display_board[row][col] = "C"  # cleared
+                    cleared += 1
+                    for r in display_board:
+                        print(" ".join(r))
+            except Exception:
+                print("❌ Invalid input! Format: row,col (0-indexed)")
+
+        if cleared == size*size - mines_count:
+            print("✅ You cleared the minefield!")
+            # Reward: coins or random powerup
+            reward = random.choice(["coins", "powerup"])
+            global coins, powerups
+            if reward == "coins":
+                coins += 5
+                print("💰 You earned 5 coins!")
+            else:
+                key = random.choice(list(powerups.keys()))
+                powerups[key] += 1
+                print(f"🧩 You gained a powerup: {key}")
+        else:
+            print("⏳ Time ran out! You failed the challenge.")
+            lives -= 1
+            print("💔 Lost 1 life!")
+
+
+def trigger_random_minigame():
+    """Rolls for one random minigame (2% chance each)."""
+    global minigame_active
+
+    if minigame_active:
+        return
+
+    roll = random.random()
+    #if roll < 0.02:  # 2% chance to trigger Minesweeper
+    #    minigame_active = True
+    #    trigger_minesweeper()
+    #    minigame_active = False
+    #elif roll < 0.04:  # 2% chance to trigger Memory Test
+    #    minigame_active = True
+    #    run_memory_test()
+     #   minigame_active = False
+    elif roll < 0.06:  # 2% chance to trigger Maze Escape
+        minigame_active = True
+        maze_minigame()
+        minigame_active = False
+    elif roll < 0.08:  # 2% chance to trigger Time Dodge
+        minigame_active = True
+        run_time_dodge()
+        minigame_active = False
+
 
 # ==========================
 # Ask a single question
@@ -1764,6 +2076,10 @@ def ask_question(q):
     global questions_correct_in_level, next_question_time_limit, time_debuff_queue
     global questions_since_last_tax, questions_since_last_shop, coins
 
+    # ----------------- MINIGAME TRIGGERS -----------------
+    trigger_random_minigame()  # triggers one random minigame if rolled
+    # -----------------------------------------------------
+
     time_up = False
     questions_since_last_tax += 1
     questions_since_last_shop += 1
@@ -1774,19 +2090,20 @@ def ask_question(q):
 
     time_limit = time_debuff_queue.pop(0) if time_debuff_queue else next_question_time_limit
 
-    # Display question
+    # ----------------- DISPLAY QUESTION -----------------
     print("\n==============================")
     print(glitch_text(f"{BLUE}Level {current_level}{RESET} → {RED}{questions_correct_in_level}/{level_up_table[current_level]}{RESET} → {YELLOW}Next Level{RESET}", total_questions_correct))
     print(glitch_text(f"{BRIGHT_MAGENTA}Time limit: {time_limit} seconds{RESET}", total_questions_correct))
-    print(glitch_text(f"Lives remaining: {BRIGHT_RED}{lives}"+RESET, total_questions_correct))
+    print(glitch_text(f"Lives remaining: {BRIGHT_RED}{lives}{RESET}", total_questions_correct))
     print(glitch_text(f"{BRIGHT_CYAN}Power-ups: {BRIGHT_YELLOW}Hint({powerups['hint']}){RESET}, {BRIGHT_GREEN}Skip({powerups['skip']}){RESET}, {BRIGHT_BLUE}Freeze({powerups['freeze']}){RESET}", total_questions_correct))
-
     print(f"{BRIGHT_BLACK}\n------------------------------\n{RESET}")
     print(glitch_text("Question:", total_questions_correct), glitch_text(q["question"], total_questions_correct))
     for choice in q["choices"]:
         print(glitch_text(choice, total_questions_correct))
-
+    
+    # ----------------- GET ANSWER -----------------
     answer = input_with_timeout("Your answer (A/B/C/D) or 'hint', 'skip', 'freeze': ", time_limit)
+    
     if time_up or answer is None:
         lives -= 1
         print(glitch_text("⏳ You lost a life.", total_questions_correct))
@@ -1816,7 +2133,7 @@ def ask_question(q):
     is_correct = (answer == q["correct"])
     
     # Apply fake-life curse override
-    is_correct, is_fake_loss = maybe_apply_fake_life_curse(is_correct)
+    #is_correct, is_fake_loss = maybe_apply_fake_life_curse(is_correct)
     
     if is_correct:
         print(glitch_text("✅ Correct!", total_questions_correct))
@@ -1839,16 +2156,17 @@ def ask_question(q):
     # ---------------- WRONG ANSWER ----------------
     print(glitch_text(f"❌ Wrong! Correct answer: {q['correct']}", total_questions_correct))
     total_questions_wrong += 1
-    
+    """
     if is_fake_loss:
         fake_lives -= 1
         print(glitch_text("Wrong!  Correct answer: ###$$$%%%###$$$%%%", total_questions_correct))
+        """
+    #else:
+    if shop_inventory["second_chance"] > 0:
+        shop_inventory["second_chance"] -= 1
+        print(glitch_text("🛡️ SECOND CHANCE used! Life saved.", total_questions_correct))
     else:
-        if shop_inventory["second_chance"] > 0:
-            shop_inventory["second_chance"] -= 1
-            print(glitch_text("🛡️ SECOND CHANCE used! Life saved.", total_questions_correct))
-        else:
-            lives -= 1
+        lives -= 1
     
         if total_questions_wrong in ADVANCEMENTS_NEGATIVE and \
            ADVANCEMENTS_NEGATIVE[total_questions_wrong] not in advancements_unlocked:
