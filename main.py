@@ -2053,7 +2053,7 @@ def trigger_random_minigame():
     #    minigame_active = True
     #    run_memory_test()
      #   minigame_active = False
-    elif roll < 0.06:  # 2% chance to trigger Maze Escape
+    if roll < 0.06:  # 2% chance to trigger Maze Escape
         minigame_active = True
         maze_minigame()
         minigame_active = False
@@ -2215,4 +2215,4 @@ while counter < TOTAL_QUESTIONS:
             secret_triggered = True
 
         if counter >= TOTAL_QUESTIONS:
-            break
+            breakc
