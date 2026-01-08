@@ -2215,4 +2215,4 @@ while counter < TOTAL_QUESTIONS:
             secret_triggered = True
 
         if counter >= TOTAL_QUESTIONS:
-            breakc
+            break
